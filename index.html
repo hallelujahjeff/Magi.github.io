@@ -139,7 +139,7 @@
   }
 
   /* 状态配色：整块实心变色，黑字保持 */
-  .node.deliberating { animation: nodeblink 0.55s steps(2,start) infinite; }
+  .node.deliberating { animation: nodeblink 0.28s steps(2,start) infinite; }
   @keyframes nodeblink { 0%,100%{ background:var(--amber);} 50%{ background:#5a2c00;} }
   .node.deliberating .name, .node.deliberating .state { color:#000; }
 
@@ -340,8 +340,20 @@
 
   /* ============ 音效：Web Audio 实时合成，无需音频文件 ============ */
   let AC = null, muted = false;
-  function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
-  function beep(freq, dur, type='square', vol=0.06, when=0){
+  let master = null;
+  function ac(){
+    if(!AC){
+      AC = new (window.AudioContext||window.webkitAudioContext)();
+      master = AC.createGain();
+      master.gain.value = 0.5;
+      master.connect(AC.destination);
+    }
+    if(AC.state === 'suspended') AC.resume();
+    return AC;
+  }
+
+  // 单发短音
+  function beep(freq, dur, type='square', vol=0.14, when=0){
     if (muted) return;
     const ctx = ac();
     const t = ctx.currentTime + when;
@@ -350,19 +362,65 @@
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t);
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.005);
+    g.gain.linearRampToValueAtTime(vol, t + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g); g.connect(ctx.destination);
+    osc.connect(g); g.connect(master);
     osc.start(t); osc.stop(t + dur + 0.02);
   }
-  // 一组组合音
+
+  // 持续脉冲警报：载波正弦波被低频方波 LFO 调制（审议中一直响）
+  let alarmNodes = null;
+  function alarmStart(ex){
+    if (muted) return;
+    alarmStop();
+    const ctx = ac();
+    const osc = ctx.createOscillator();  // 载波
+    osc.type = 'sine';
+    osc.frequency.value = 2080;
+    const lfo = ctx.createOscillator();  // 脉冲调制
+    lfo.type = 'square';
+    lfo.frequency.value = ex ? 30 : 11;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.5;            // LFO 深度：让音量在 0 和峰值间脉冲
+    const vol = ctx.createGain();
+    vol.gain.value = 0.16;
+    lfo.connect(lfoGain);
+    lfoGain.connect(vol.gain);
+    osc.connect(vol);
+    vol.connect(master);
+    osc.start(0); lfo.start(0);
+    alarmNodes = { osc, lfo, vol };
+  }
+  function alarmStop(){
+    if(!alarmNodes) return;
+    try{ alarmNodes.osc.stop(0); alarmNodes.lfo.stop(0); }catch(e){}
+    alarmNodes = null;
+  }
+
+  // 出结果的尖锐长音（可決 2000 / 否決 3400）
+  function verdictTone(ok){
+    if (muted) return;
+    const ctx = ac();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = ok ? 2000 : 3400;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.01);
+    g.gain.setValueAtTime(0.22, t + 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + 0.9);
+  }
+
   const S = {
-    tick:   ()=> beep(880, 0.04, 'square', 0.03),
-    scan:   ()=> beep(220, 0.08, 'sawtooth', 0.04),
-    process:(i)=> beep(440 + i*120, 0.05, 'square', 0.04),
-    approve:()=>{ beep(660,0.1,'square',0.06,0); beep(880,0.12,'square',0.06,0.1); beep(1320,0.25,'triangle',0.06,0.22); },
-    deny:   ()=>{ beep(200,0.18,'sawtooth',0.07,0); beep(140,0.35,'sawtooth',0.07,0.16); },
-    alarm:  ()=>{ for(let i=0;i<3;i++){ beep(700,0.12,'square',0.05,i*0.28); beep(500,0.12,'square',0.05,i*0.28+0.14);} }
+    tick:   ()=> beep(1200, 0.03, 'square', 0.12),
+    scan:   ()=> beep(2080, 0.05, 'sine', 0.14),
+    process:(i)=> beep(1600 + i*200, 0.05, 'square', 0.12),
+    alarmStart, alarmStop,
+    approve:()=> verdictTone(true),
+    deny:   ()=> verdictTone(false)
   };
 
   /* ============ 状态机 ============ */
@@ -471,6 +529,7 @@
   function reset(){
     clearTimers();
     running = false;
+    S.alarmStop();  // 停止可能仍在响的警报
     nodes.forEach(n=> n.className = 'node ' + (n.classList.contains('top')?'top':n.classList.contains('left')?'left':'right'));
     states.forEach(s=>{ s.textContent='待機'; s.className='state'; });
     reasonEls.forEach(r=> r.className='reason');
@@ -521,9 +580,9 @@
     $('status').textContent = 'ANALYZING...';
     $('coreVerdict').textContent = '審議中';
     log('提訴受理: ' + query);
-    S.alarm();
+    S.alarmStart(true);  // 持续脉冲警报，紧迫感来源，一直响到出结果
 
-    // 三台机器进入"审议中"动画
+    // 三台机器几乎同时进入"审议中"（节奏加快）
     nodes.forEach((n,i)=>{
       T(()=>{
         states[i].textContent='審議中';
@@ -533,7 +592,7 @@
         reasonZhEls[i].textContent='';
         S.scan();
         log(names[i] + ' 演算開始...');
-      }, 300 + i*300);
+      }, 80 + i*110);
     });
 
     // 单次 API 调用：一次拿回三台的判断，避免并发 503
@@ -547,24 +606,23 @@
 
     if(!running) return; // 已被 reset 打断
 
-    // 随机揭晓顺序 + 随机间隔（不再固定按 M→B→C 顺序）
+    // 随机揭晓顺序 + 随机间隔（节奏加快，紧凑连击）
     const order = [0,1,2];
     for(let i=order.length-1;i>0;i--){ // Fisher–Yates 洗牌
       const j = Math.floor(Math.random()*(i+1));
       [order[i],order[j]] = [order[j],order[i]];
     }
-    let acc = 400 + Math.random()*400;
-    const revealAt = {};
+    let acc = 500 + Math.random()*300;
     order.forEach((idx)=>{
       const r = results[idx];
-      revealAt[idx] = acc;
-      T(()=> showVerdict(idx, r.ok, r.reasonJa, r.reasonZh), acc);
-      acc += 500 + Math.random()*900; // 每台间隔 0.5〜1.4s 随机
+      T(()=>{ showVerdict(idx, r.ok, r.reasonJa, r.reasonZh); S.process(idx); }, acc);
+      acc += 260 + Math.random()*340; // 每台间隔 0.26〜0.6s，快速连击
     });
     const lastReveal = acc;
 
-    // 汇总多数决（在最后一台揭晓之后）
+    // 汇总多数决（紧接最后一台揭晓）
     T(()=>{
+      S.alarmStop();  // 停止持续警报
       const anyError = results.some(r=>r.error);
       const yes = results.filter(r=>r.ok).length;
       const approved = yes >= 2;
@@ -578,7 +636,7 @@
       log(`決議完了 (${yes}/3) : ` + (approved?'APPROVED':'DENIED'));
       running = false;
       T(()=>{ b.className = 'banner ' + (approved?'approved':'denied'); }, 1800);
-    }, lastReveal + 300);
+    }, lastReveal + 150);
   }
 
   /* ============ 交互与环境动画 ============ */
@@ -604,7 +662,7 @@
   $('btnMute').addEventListener('click', (e)=>{
     muted = !muted;
     e.target.textContent = muted ? '音声 OFF' : '音声 ON';
-    if(!muted){ ac(); S.tick(); }
+    if(muted){ S.alarmStop(); } else { ac(); S.tick(); }
   });
 
   // 顶部 CODE 数字乱跳
