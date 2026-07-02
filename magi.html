@@ -379,7 +379,7 @@
     osc.frequency.value = 2080;
     const lfo = ctx.createOscillator();  // 脉冲调制
     lfo.type = 'square';
-    lfo.frequency.value = ex ? 30 : 11;
+    lfo.frequency.value = ex ? 30 : 10;
     const lfoGain = ctx.createGain();
     lfoGain.gain.value = 0.5;            // LFO 深度：让音量在 0 和峰值间脉冲
     const vol = ctx.createGain();
@@ -580,7 +580,7 @@
     $('status').textContent = 'ANALYZING...';
     $('coreVerdict').textContent = '審議中';
     log('提訴受理: ' + query);
-    S.alarmStart(true);  // 持续脉冲警报，紧迫感来源，一直响到出结果
+    S.alarmStart(false);  // 持续脉冲警报（10Hz，与参考仓库默认一致）
 
     // 三台机器几乎同时进入"审议中"（节奏加快）
     nodes.forEach((n,i)=>{
