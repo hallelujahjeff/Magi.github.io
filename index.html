@@ -708,9 +708,22 @@
     $('getKeyLink').style.display = 'none';
     $('keyLabel').innerHTML = '<span style="color:var(--green)">● APIキー内蔵済み</span>';
   } else {
-    // 恢复本地保存的 Key；首次打开（未保存过）则弹窗请求输入
-    let savedKey = localStorage.getItem(LS_KEY) || '';
-    if (!savedKey) {
+    // ① URL から key を読む（#key=... または ?key=...）。友人へのリンク共有用。
+    let urlKey = '';
+    try {
+      const hp = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      const qp = new URLSearchParams(location.search || '');
+      urlKey = (hp.get('key') || qp.get('key') || '').trim();
+    } catch(_) {}
+
+    let savedKey = urlKey || localStorage.getItem(LS_KEY) || '';
+
+    if (urlKey) {
+      // URL から取得したら保存し、アドレスバーからは消す（履歴・盗み見対策）
+      localStorage.setItem(LS_KEY, urlKey);
+      try { history.replaceState(null, '', location.pathname); } catch(_) {}
+    } else if (!savedKey) {
+      // ② 保存も URL も無ければ、初回だけ入力を求める
       const entered = window.prompt(
         'MAGI SYSTEM — OpenRouter API Key を入力してください。\n（本机浏览器のみに保存され、外部には送信されません）\n\nKey は https://openrouter.ai/keys で取得できます。',
         ''
