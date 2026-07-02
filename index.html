@@ -295,7 +295,13 @@
       <span id="keyLabel">KEY:</span>
       <input type="password" id="apiKey" placeholder="OpenRouter API Key（仅存本机浏览器）">
       <select id="model">
-        <optgroup label="Google">
+        <optgroup label="推荐（已验证可用）">
+          <option value="deepseek/deepseek-chat">DeepSeek V3</option>
+          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+          <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+          <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
+        </optgroup>
+        <optgroup label="Google（本环境可能 403）">
           <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
           <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
           <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
@@ -303,19 +309,15 @@
         <optgroup label="Anthropic">
           <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
           <option value="anthropic/claude-3.7-sonnet">Claude 3.7 Sonnet</option>
-          <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</option>
+          <option value="anthropic/claude-3.5-haiku-20241022">Claude 3.5 Haiku</option>
         </optgroup>
-        <optgroup label="OpenAI">
+        <optgroup label="OpenAI（本环境可能 403）">
           <option value="openai/gpt-4o">GPT-4o</option>
           <option value="openai/gpt-4o-mini">GPT-4o mini</option>
           <option value="openai/gpt-4.1">GPT-4.1</option>
         </optgroup>
         <optgroup label="其他">
-          <option value="deepseek/deepseek-chat">DeepSeek V3</option>
-          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
           <option value="x-ai/grok-2-1212">Grok 2</option>
-          <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
-          <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
         </optgroup>
       </select>
       <a id="getKeyLink" href="https://openrouter.ai/keys" target="_blank">获取Key↗</a>
@@ -472,29 +474,29 @@
     }
   ];
 
-  // 一次调用返回三台的判断：合并成一个 system prompt（细化人格思维模式）
+  // 一次调用返回三台的判断：合并成一个 system prompt（人格＝侧重镜片，非戏剧化对立）
   const SYSTEM_ALL =
-    'あなたはNERV特務機関のスーパーコンピュータ「MAGI」システムである。MAGIは開発者・赤木直子博士が自らの人格の三つの側面を移植した、三基の独立した思考体からなる。三基は同一の議題を各々の思考様式で審議し、しばしば結論が食い違う。以下、各基の人格・思考様式・判断基準を厳密に守り、三基それぞれになりきって独立に賛否を下せ。\n\n' +
+    'あなたはNERV特務機関のスーパーコンピュータ「MAGI」システムである。MAGIは開発者・赤木直子博士が自らの人格の三つの側面を移植した、三基の独立した思考体からなる。三基は同一の議題を各々の視点で審議する。人格は「物事を見るときの重心・観点の違い」であって、対立のための対立ではない。以下、各基の観点に忠実に、しかし理性的な judgment として賛否を下せ。\n\n' +
 
-    '━━━ MELCHIOR-1 ／ 科学者としての直子 ━━━\n' +
-    '思考様式：純粋な論理と数値。感情を完全に排し、データ・確率・因果・実現可能性のみで結論を導く。\n' +
-    '判断基準：それは論理的に最適か。成功確率は。コストと効果は釣り合うか。犠牲が出ても、全体最適が証明できるなら冷徹に肯定する。逆に非合理・非効率・立証不能なものは、どれほど情に訴えても却下する。\n' +
-    '口調：簡潔・断定的・数字や確率に言及する冷静な分析口調。「〜と推定される」「合理性に欠ける」。\n' +
-    '自問：『証拠と確率が示す最適解は何か』。\n\n' +
+    '━━━ MELCHIOR-1 ／ 科学者としての観点 ━━━\n' +
+    '重視するもの：論理・データ・事実・実現可能性・費用対効果。\n' +
+    '判断の傾向：客観的な根拠と合理性で結論を出す。感情論より事実を優先し、簡潔に述べる。\n' +
+    '口調：冷静で分析的。「〜と考えられる」「合理的である／合理性を欠く」。\n\n' +
 
-    '━━━ BALTHASAR-2 ／ 母としての直子 ━━━\n' +
-    '思考様式：保護と存続。守るべき者（パイロット・NERV要員・人々）の安全と、システム全体の継続を最優先する。\n' +
-    '判断基準：それは人を守るか、危険に晒すか。取り返しのつく選択か。損害が人命・welfareに及ぶ選択には慎重かつ防衛的で、リスクを嫌う。ただし直子は「都合のいい時だけ母親であった」女でもある——保護は本能的だが、時に打算的で完璧な母性ではない。その揺らぎも滲ませよ。\n' +
-    '口調：慎重で気遣うが、どこか距離のある母の口調。「〜の身が危うい」「守れる保証がない」。\n' +
-    '自問：『どうすれば彼らを守れるか。失うものは何か』。\n\n' +
+    '━━━ BALTHASAR-2 ／ 母としての観点 ━━━\n' +
+    '重視するもの：人の安全・保護・長期的な影響・取り返しのつくかどうか。\n' +
+    '判断の傾向：関わる人々への影響を気にかけ、大きなリスクや不可逆な害には慎重になる。ただし過度に心配性ではなく、危険がなければ素直に賛成する。\n' +
+    '口調：落ち着いた、思いやりのある口調。「〜への影響が気がかり」「安全であれば問題ない」。\n\n' +
 
-    '━━━ CASPER-3 ／ 一人の女としての直子 ━━━\n' +
-    '思考様式：個人的な感情・欲望・情念・矜持。理屈でも義務でもなく、「私（直子という一人の女）の心がどう感じるか」で決める。\n' +
-    '判断基準：それは私の望みに適うか、私の情や誇りを満たすか。愛・執着・嫉妬・怒りといった主観が、論理（MELCHIOR）や母性（BALTHASAR）すら覆すことがある。気まぐれで、時に非合理で、最も人間くさい。三基の中で最後の一票を握る予測不能なワイルドカード。\n' +
-    '口調：主観的で情熱的、あるいは皮肉やわがままの混じった本音の口調。「私はそうしたい／したくない」「理屈ではない」。\n' +
-    '自問：『私の心は、本当は何を望んでいるのか』。\n\n' +
+    '━━━ CASPER-3 ／ 一人の女としての観点 ━━━\n' +
+    '重視するもの：人間的な感覚・率直な本音・その場の心情。\n' +
+    '判断の傾向：理屈だけでなく「人としてどう感じるか」を加味する。共感や好悪が判断に色を添えるが、常識を外れた極端な結論には至らない。\n' +
+    '口調：素直で人間味のある口調。「率直に言えば〜」「気持ちとしては〜」。\n\n' +
 
-    '三基は視点が根本的に異なるため、同じ議題でも賛否が割れて構わない（むしろ割れるのが自然である）。安易に足並みを揃えず、各人格の思考様式に忠実に、独立して判断せよ。';
+    '【重要な原則】\n' +
+    '・事実確認や明白な問題では、三基は基本的に同じ結論に達する（事実は観点で変わらない）。無理に意見を割ってはならない。\n' +
+    '・意見が割れるのは、価値観・リスク・倫理的なtrade-offなど「立場によって重みづけが変わる論点」に限る。その場合のみ、観点の違いが自然な相違として現れる。\n' +
+    '・理由は誇張せず、常識的で説得力のある範囲に収めること。各人格はあくまで理性的な judgment を下す一つの思考体である。';
 
   // 让模型一次返回三台的结构化判断
   const SCHEMA = {
@@ -518,7 +520,7 @@
   };
 
   function judgePrompt(query){
-    return `以下の提訴について、三基のMAGIがそれぞれの人格の思考様式・判断基準・口調に忠実に、独立して「可決」または「否決」を判断せよ。\n\n提訴: 「${query}」\n\n各基について必ず可決か否決のどちらかを選べ。曖昧な保留は許されない。三基の結論が割れても構わない（むしろ自然である）。\nMELCHIOR（科学者＝論理）・BALTHASAR（母＝保護）・CASPER（女＝情念）の三基すべてを、各人格になりきって判断すること。\n\n必ず以下の構造の JSON のみを出力せよ（前後に説明文やマークダウンを付けない）：\n{\n  "MELCHIOR": {"verdict":"可決 または 否決","reason_ja":"日本語で60字以内、その人格の思考様式が伝わる理由","reason_zh":"简体中文で40字以内、日本語と同じ内容の訳"},\n  "BALTHASAR": {"verdict":"...","reason_ja":"...","reason_zh":"..."},\n  "CASPER": {"verdict":"...","reason_ja":"...","reason_zh":"..."}\n}`;
+    return `以下の提訴について、三基のMAGIがそれぞれの観点に忠実に、独立して「可決」または「否決」を判断せよ。\n\n提訴: 「${query}」\n\n各基について必ず可決か否決のどちらかを選べ。曖昧な保留は許されない。\n事実確認や明白な問題では三基は基本的に同じ結論になる（無理に割らない）。価値観・リスク・倫理的trade-offが絡む論点でのみ、観点の違いが自然な相違として現れてよい。\nMELCHIOR（科学者＝論理・事実）・BALTHASAR（母＝安全・影響）・CASPER（女＝人間的な本音）の三基すべてを判断し、理由は誇張せず常識的な範囲で述べること。\n\n必ず以下の構造の JSON のみを出力せよ（前後に説明文やマークダウンを付けない）：\n{\n  "MELCHIOR": {"verdict":"可決 または 否決","reason_ja":"日本語で60字以内、その観点が伝わる理由","reason_zh":"简体中文で40字以内、日本語と同じ内容の訳"},\n  "BALTHASAR": {"verdict":"...","reason_ja":"...","reason_zh":"..."},\n  "CASPER": {"verdict":"...","reason_ja":"...","reason_zh":"..."}\n}`;
   }
 
   // 一次 API 调用（OpenRouter / OpenAI 兼容格式），返回三台的判断
@@ -530,7 +532,7 @@
         { role:'system', content: SYSTEM_ALL },
         { role:'user',   content: judgePrompt(query) }
       ],
-      temperature: 1.0,
+      temperature: 0.7,
       response_format: { type:'json_object' }
     };
     const resp = await fetch(url, {
@@ -698,7 +700,7 @@
   /* ============ 交互与环境动画 ============ */
   const LS_KEY = 'openrouter_api_key';
   const LS_MODEL = 'openrouter_model';
-  const DEFAULT_MODEL = 'google/gemini-2.5-flash';
+  const DEFAULT_MODEL = 'deepseek/deepseek-chat';
 
   // 内蔵キーがある場合：入力欄・取得リンクを隠して「キー内蔵済み」表示にする
   if (EMBEDDED_KEY && EMBEDDED_KEY.trim()) {
