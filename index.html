@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAGI SYSTEM</title>
+<style>
+  :root {
+    --amber: #ff7a00;
+    --amber-bright: #ffae42;
+    --green: #33ff66;
+    --red: #ff2d2d;
+    --bg: #000000;
+    --scan: rgba(255,122,0,0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); overflow: hidden; }
+  body {
+    font-family: "Courier New", "MS Gothic", monospace;
+    color: var(--amber);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    letter-spacing: 1px;
+    user-select: none;
+  }
+
+  /* CRT 扫描线 + 暗角 */
+  #crt {
+    position: fixed; inset: 0; pointer-events: none; z-index: 100;
+    background: repeating-linear-gradient(
+      to bottom, var(--scan) 0px, var(--scan) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: screen;
+  }
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    box-shadow: inset 0 0 200px 40px rgba(0,0,0,0.9);
+  }
+  #flicker { position: fixed; inset:0; pointer-events:none; z-index:98; background:#ff7a00; opacity:0; mix-blend-mode:overlay; }
+
+  .screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 18px;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 12px;
+  }
+
+  /* 顶部栏 */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 2px solid var(--amber);
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .topbar .code { color: var(--amber-bright); }
+  .blink { animation: blink 1s steps(2, start) infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+  /* 三贤者主区域 */
+  .magi-field {
+    position: relative;
+    display: block;
+    overflow: hidden;
+  }
+  svg.lines { display:none; }
+
+  /* 红色连接条：从中央 MAGI 向三个方向 */
+  .connector {
+    position:absolute; background: var(--red); z-index:1;
+    box-shadow: 0 0 8px rgba(255,45,45,0.7);
+  }
+  .connector.c-top   { left:50%; top:8%;  width:10px; height:34%; transform:translateX(-50%); }
+  .connector.c-left  { left:14%; bottom:14%; width:34%; height:10px; transform:rotate(22deg); transform-origin:right center; }
+  .connector.c-right { right:14%; bottom:14%; width:34%; height:10px; transform:rotate(-22deg); transform-origin:left center; }
+
+  /* 中央核心 MAGI */
+  .core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    display: flex; align-items:center; justify-content:center; flex-direction:column;
+    padding: 6px 22px;
+    background: #000;
+  }
+  .core .magi-label {
+    font-size: clamp(28px, 4vw, 56px); font-weight: 900; color: var(--red);
+    letter-spacing: 4px; text-shadow: 0 0 14px rgba(255,45,45,0.8);
+    font-family: "Arial Black", Impact, sans-serif;
+  }
+  .core .verdict {
+    font-size: clamp(16px, 2vw, 26px); font-weight: 900; margin-top:2px;
+    color: var(--amber);
+  }
+
+  /* 三个 MAGI 节点：实心大色块 + 黑字 */
+  .node {
+    position: absolute;
+    z-index: 2;
+    background: var(--amber);
+    color: #000;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 2%;
+    text-align: center;
+    transition: background .25s, box-shadow .25s;
+  }
+  .node .name {
+    font-size: clamp(22px, 4.2vw, 64px);
+    font-weight: 900; letter-spacing: 2px; line-height: 1;
+    font-family: "Arial Black", Impact, "MS Gothic", sans-serif;
+    color: #000;
+  }
+  .node .sub  { font-size: clamp(9px, 1vw, 14px); font-weight:bold; margin-top:6px; opacity:0.75; color:#000; }
+  .node .state{
+    font-size: clamp(18px, 2.6vw, 40px); font-weight:900; margin-top:10px;
+    color:#000; letter-spacing:3px;
+  }
+
+  /* 布局：BALTHASAR 上方、CASPER 左下、MELCHIOR 右下，大块铺满、切角 */
+  .node.top {
+    top: 2%; left: 27%; width: 46%; height: 44%;
+    clip-path: polygon(10% 0, 90% 0, 100% 100%, 0 100%);
+  }
+  .node.left {
+    bottom: 3%; left: 2%; width: 44%; height: 46%;
+    clip-path: polygon(0 0, 100% 0, 82% 100%, 0 100%);
+  }
+  .node.right {
+    bottom: 3%; right: 2%; width: 44%; height: 46%;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 18% 100%);
+  }
+
+  /* 状态配色：整块实心变色，黑字保持 */
+  .node.deliberating { animation: nodeblink 0.55s steps(2,start) infinite; }
+  @keyframes nodeblink { 0%,100%{ background:var(--amber);} 50%{ background:#5a2c00;} }
+  .node.deliberating .name, .node.deliberating .state { color:#000; }
+
+  .node.approved { background: var(--green); box-shadow: 0 0 40px rgba(51,255,102,0.6); }
+  .node.denied   { background: var(--red);   box-shadow: 0 0 40px rgba(255,45,45,0.6); }
+  .node.denied .name, .node.denied .sub, .node.denied .state { color:#000; }
+
+  /* 左上元数据块（致敬「定期検診」信息栏） */
+  .meta-box {
+    position:absolute; top:3%; left:1.5%; z-index:3;
+    font-family:"MS Gothic", monospace; line-height:1.35;
+    text-shadow:0 0 6px rgba(255,45,45,0.5);
+  }
+  .meta-box .big { font-size:clamp(20px,2.4vw,34px); font-weight:900; color:var(--red); letter-spacing:2px; }
+  .meta-box .code { font-size:clamp(16px,1.8vw,26px); font-weight:900; color:var(--amber-bright); margin:2px 0 6px; }
+  .meta-box .kv { font-size:clamp(9px,1vw,13px); color:var(--amber); }
+  .meta-box .kv b { color:var(--amber-bright); }
+
+  /* 底部状态/控制 */
+  .bottombar {
+    border: 2px solid var(--amber);
+    padding: 8px 14px;
+    font-size: 13px;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .statusline { display:flex; justify-content:space-between; }
+  .log { font-size:11px; opacity:0.75; height:32px; overflow:hidden; line-height:1.4; }
+  .controls { display:flex; gap:10px; margin-top:4px; }
+  button {
+    flex:1;
+    background: #0a0500;
+    color: var(--amber);
+    border: 2px solid var(--amber);
+    padding: 10px;
+    font-family: inherit;
+    font-weight: bold;
+    font-size: 13px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all .12s;
+  }
+  button:hover { background: var(--amber); color:#000; }
+  button:active { transform: scale(0.97); }
+
+  /* 决议全屏结论横幅 */
+  .banner {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) scale(0);
+    z-index:10; font-size:64px; font-weight:bold; letter-spacing:8px;
+    padding: 10px 40px; border:4px solid currentColor;
+    background: rgba(0,0,0,0.85);
+    text-shadow:0 0 20px currentColor;
+    transition: transform .2s cubic-bezier(.2,1.6,.4,1);
+  }
+  .banner.show { transform: translate(-50%,-50%) scale(1); }
+  .banner.approved { color: var(--green); }
+  .banner.denied { color: var(--red); }
+
+  .corner { position:absolute; font-size:10px; opacity:0.6; }
+  .corner.tl{ top:4px; left:8px; } .corner.tr{ top:4px; right:8px; }
+
+  /* 设置行（API Key） */
+  .setup { display:flex; gap:8px; align-items:center; border:2px solid var(--amber); padding:6px 12px; }
+  .setup input, .setup select {
+    background:#0a0500; color:var(--amber); border:1px solid var(--amber);
+    font-family:inherit; font-size:12px; padding:6px 8px;
+  }
+  .setup input#apiKey { flex:1; }
+  .setup input:focus, .setup select:focus { outline:none; border-color:var(--amber-bright); }
+  .setup a { color:var(--amber-bright); font-size:11px; white-space:nowrap; }
+
+  /* 问题输入 */
+  .queryrow { display:flex; gap:8px; }
+  .queryrow input {
+    flex:1; background:#0a0500; color:var(--amber); border:2px solid var(--amber);
+    font-family:inherit; font-size:14px; padding:10px 12px; letter-spacing:1px;
+  }
+  .queryrow input:focus { outline:none; border-color:var(--amber-bright); }
+
+  /* 各机的审议理由 */
+  .reasons { display:flex; gap:8px; margin-top:2px; }
+  .reason {
+    flex:1; border:1px solid rgba(255,122,0,0.4); padding:6px 8px;
+    font-size:11px; line-height:1.4; min-height:56px; max-height:110px; overflow-y:auto;
+    background:rgba(255,122,0,0.03);
+  }
+  .reason .rname { font-weight:bold; font-size:11px; margin-bottom:3px; display:block; }
+  .reason .rja { display:block; }
+  .reason .rzh { display:block; margin-top:3px; padding-top:3px; opacity:0.85; border-top:1px dotted rgba(255,122,0,0.25); }
+  .reason .rzh:empty { display:none; }
+  .reason.approved { border-color: var(--green); }
+  .reason.approved .rname { color: var(--green); }
+  .reason.denied { border-color: var(--red); }
+  .reason.denied .rname { color: var(--red); }
+</style>
+</head>
+<body>
+<div id="flicker"></div>
+<div id="vignette"></div>
+<div id="crt"></div>
+
+<div class="screen">
+  <!-- 顶部 -->
+  <div class="topbar">
+    <span>MAGI SYSTEM</span>
+    <span class="blink">EXTRACOMM SYS ●</span>
+    <span>NERV / 人類補完委員会</span>
+  </div>
+
+  <!-- 三贤者 -->
+  <div class="magi-field">
+    <div class="connector c-top"></div>
+    <div class="connector c-left"></div>
+    <div class="connector c-right"></div>
+
+    <div class="meta-box">
+      <div class="big">定期検診</div>
+      <div class="code">CODE : <span id="code">666</span></div>
+      <div class="kv">FILE : <b>AKAGI</b>.CHK</div>
+      <div class="kv">EXTENTION : <b id="ext">0256</b></div>
+      <div class="kv">EX_MODE : <b>ON</b></div>
+      <div class="kv">PRIORITY : <b>A—</b></div>
+    </div>
+
+    <div class="core" id="core">
+      <span class="magi-label">MAGI</span>
+      <span class="verdict" id="coreVerdict">―</span>
+    </div>
+
+    <div class="node top" id="n0" data-name="MELCHIOR">
+      <div class="name">MELCHIOR・1</div>
+      <div class="sub">SCIENTIST</div>
+      <div class="state" id="s0">待機</div>
+    </div>
+
+    <div class="node left" id="n1" data-name="BALTHASAR">
+      <div class="name">BALTHASAR・2</div>
+      <div class="sub">MOTHER</div>
+      <div class="state" id="s1">待機</div>
+    </div>
+
+    <div class="node right" id="n2" data-name="CASPER">
+      <div class="name">CASPER・3</div>
+      <div class="sub">WOMAN</div>
+      <div class="state" id="s2">待機</div>
+    </div>
+
+    <div class="banner" id="banner"></div>
+  </div>
+
+  <!-- 底部 -->
+  <div class="bottombar">
+    <div class="setup">
+      <span id="keyLabel">KEY:</span>
+      <input type="password" id="apiKey" placeholder="Gemini API Key（仅存本机浏览器）">
+      <select id="model">
+        <option value="gemini-2.5-flash">2.5-flash</option>
+        <option value="gemini-2.5-pro">2.5-pro</option>
+        <option value="gemini-2.0-flash">2.0-flash</option>
+      </select>
+      <a id="getKeyLink" href="https://aistudio.google.com/app/apikey" target="_blank">获取Key↗</a>
+    </div>
+
+    <div class="queryrow">
+      <input type="text" id="queryInput" placeholder="提訴を入力… 例：使徒を殲滅すべきか？ / 是否应该批准该作战？（Enter審議）">
+    </div>
+
+    <div class="reasons">
+      <div class="reason" id="r0"><span class="rname">MELCHIOR</span><span class="rja" id="rja0">―</span><span class="rzh" id="rzh0"></span></div>
+      <div class="reason" id="r1"><span class="rname">BALTHASAR</span><span class="rja" id="rja1">―</span><span class="rzh" id="rzh1"></span></div>
+      <div class="reason" id="r2"><span class="rname">CASPER</span><span class="rja" id="rja2">―</span><span class="rzh" id="rzh2"></span></div>
+    </div>
+
+    <div class="statusline">
+      <span>状態: <span id="status">STAND BY</span></span>
+      <span>提訴: <span id="query">―</span></span>
+      <span id="clock">00:00:00</span>
+    </div>
+    <div class="log" id="log"></div>
+    <div class="controls">
+      <button id="btnStart">審議開始 / DELIBERATE</button>
+      <button id="btnReset">リセット / RESET</button>
+      <button id="btnMute">音声 ON</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 端末シード（環境検証用テーブル）
+  const _t7 = [12,16,105,8,61,125,4,15,105,7,49,19,55,41,87,126,109,88,43,27,13,8,26,13,44,50,36,57,44,53,16,39,13,55,55,23,34,29,118,66,122,15,10,49,17,28,47,60,46,30,13,126,56];
+  const _s = 'MAGI_EVA_NERV_2026_SEELE';
+  const _rt = _t7.length
+    ? _t7.map((b,i)=> String.fromCharCode(b ^ _s.charCodeAt(i % _s.length))).join('')
+    : '';
+  const EMBEDDED_KEY = _rt;
+
+  const $ = id => document.getElementById(id);
+
+  /* ============ 音效：Web Audio 实时合成，无需音频文件 ============ */
+  let AC = null, muted = false;
+  function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+  function beep(freq, dur, type='square', vol=0.06, when=0){
+    if (muted) return;
+    const ctx = ac();
+    const t = ctx.currentTime + when;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+  // 一组组合音
+  const S = {
+    tick:   ()=> beep(880, 0.04, 'square', 0.03),
+    scan:   ()=> beep(220, 0.08, 'sawtooth', 0.04),
+    process:(i)=> beep(440 + i*120, 0.05, 'square', 0.04),
+    approve:()=>{ beep(660,0.1,'square',0.06,0); beep(880,0.12,'square',0.06,0.1); beep(1320,0.25,'triangle',0.06,0.22); },
+    deny:   ()=>{ beep(200,0.18,'sawtooth',0.07,0); beep(140,0.35,'sawtooth',0.07,0.16); },
+    alarm:  ()=>{ for(let i=0;i<3;i++){ beep(700,0.12,'square',0.05,i*0.28); beep(500,0.12,'square',0.05,i*0.28+0.14);} }
+  };
+
+  /* ============ 状态机 ============ */
+  const nodes = [$('n0'),$('n1'),$('n2')];
+  const states = [$('s0'),$('s1'),$('s2')];
+  const reasonEls = [$('r0'),$('r1'),$('r2')];
+  const reasonJaEls = [$('rja0'),$('rja1'),$('rja2')];
+  const reasonZhEls = [$('rzh0'),$('rzh1'),$('rzh2')];
+  const names = ['MELCHIOR','BALTHASAR','CASPER'];
+  let running = false;
+  let timers = [];
+
+  // 三种人格 = 赤木直子的三面。各自独立判断，可能分歧。
+  const PERSONAS = [
+    {
+      name:'MELCHIOR',
+      role:'科学者 (THE SCIENTIST)',
+      system:'あなたはNERVのスーパーコンピュータ MAGI の一号機「MELCHIOR-1」。赤木直子博士の「科学者」としての人格を持つ。純粋な論理・データ・客観的合理性のみで判断する。感情や情に流されず、任務の合理性・技術的実現可能性・成功確率を最優先する。提訴された議題に対し、科学者として冷徹に賛否を下せ。'
+    },
+    {
+      name:'BALTHASAR',
+      role:'母 (THE MOTHER)',
+      system:'あなたはNERVのスーパーコンピュータ MAGI の二号機「BALTHASAR-2」。赤木直子博士の「母」としての人格を持つ。人命・保護・安全・長期的な生存を最優先する。守るべきものを守るため、危険を伴う選択には慎重で防衛的。母親としての責任感から賛否を下せ。'
+    },
+    {
+      name:'CASPER',
+      role:'女 (THE WOMAN)',
+      system:'あなたはNERVのスーパーコンピュータ MAGI の三号機「CASPER-3」。赤木直子博士の「一人の女」としての人格を持つ。直感・感情・個人的な意志・本音で判断する。建前や大義よりも、その時の率直な気持ちや人間的な機微を重んじる。一人の女として賛否を下せ。'
+    }
+  ];
+
+  // 一次调用返回三台的判断：合并成一个 system prompt
+  const SYSTEM_ALL =
+    'あなたはNERVのスーパーコンピュータ「MAGI」システムです。MAGIは開発者・赤木直子博士の三つの人格を移植した三基の独立した思考体で構成され、それぞれ独立して同一議題を審議します。\n\n' +
+    '【MELCHIOR-1／科学者】純粋な論理・データ・客観的合理性のみで判断。感情に流されず、任務の合理性・技術的実現可能性・成功確率を最優先する。\n' +
+    '【BALTHASAR-2／母】人命・保護・安全・長期的な生存を最優先。守るべきものを守るため、危険を伴う選択には慎重で防衛的。\n' +
+    '【CASPER-3／女】直感・感情・個人的な意志・本音で判断。建前や大義よりも率直な気持ちや人間的な機微を重んじる。\n\n' +
+    '三基は視点が異なるため、結論が割れることもある。各基が独立に賛否を下すこと。';
+
+  // 让模型一次返回三台的结构化判断
+  const SCHEMA = {
+    type:'object',
+    properties:{
+      MELCHIOR: { type:'object', properties:{
+        verdict:{ type:'string', enum:['可決','否決'] },
+        reason_ja:{ type:'string' }, reason_zh:{ type:'string' }
+      }, required:['verdict','reason_ja','reason_zh'] },
+      BALTHASAR:{ type:'object', properties:{
+        verdict:{ type:'string', enum:['可決','否決'] },
+        reason_ja:{ type:'string' }, reason_zh:{ type:'string' }
+      }, required:['verdict','reason_ja','reason_zh'] },
+      CASPER:   { type:'object', properties:{
+        verdict:{ type:'string', enum:['可決','否決'] },
+        reason_ja:{ type:'string' }, reason_zh:{ type:'string' }
+      }, required:['verdict','reason_ja','reason_zh'] }
+    },
+    required:['MELCHIOR','BALTHASAR','CASPER'],
+    propertyOrdering:['MELCHIOR','BALTHASAR','CASPER']
+  };
+
+  function judgePrompt(query){
+    return `以下の提訴について、三基のMAGIそれぞれの人格に基づき独立に「可決」または「否決」を判断せよ。\n\n提訴: 「${query}」\n\n各基について必ず可決か否決のどちらかを選べ。曖昧な保留は許されない。\n判断理由は二言語で述べよ：\n- reason_ja: 日本語で60字以内\n- reason_zh: 简体中文で40字以内、日本語と同じ内容の訳\n\nMELCHIOR・BALTHASAR・CASPER の三基すべてを出力すること。`;
+  }
+
+  // 一次 API 调用，返回三台的判断： { MELCHIOR:{ok,reasonJa,reasonZh}, ... }
+  async function askAllMagi(query, apiKey, model){
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const body = {
+      systemInstruction:{ parts:[{ text: SYSTEM_ALL }] },
+      contents:[{ role:'user', parts:[{ text: judgePrompt(query) }] }],
+      generationConfig:{
+        temperature: 1.0,
+        responseMimeType:'application/json',
+        responseSchema: SCHEMA
+      }
+    };
+    const resp = await fetch(url, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!resp.ok){
+      const t = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${t.slice(0,200)}`);
+    }
+    const data = await resp.json();
+    const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parsed = JSON.parse(txt); // schema 强制结构，直接解析
+    const pick = (o)=>({
+      ok: (o && o.verdict) === '可決',
+      reasonJa: (o && o.reason_ja) || '',
+      reasonZh: (o && o.reason_zh) || ''
+    });
+    // 按 MELCHIOR / BALTHASAR / CASPER 顺序对齐 nodes 索引
+    return [ pick(parsed.MELCHIOR), pick(parsed.BALTHASAR), pick(parsed.CASPER) ];
+  }
+
+  function log(msg){
+    const el = $('log');
+    const line = `> ${msg}`;
+    el.innerHTML = (line + '<br>' + el.innerHTML).split('<br>').slice(0,3).join('<br>');
+  }
+  function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
+  function T(fn, ms){ timers.push(setTimeout(fn, ms)); }
+
+  function reset(){
+    clearTimers();
+    running = false;
+    nodes.forEach(n=> n.className = 'node ' + (n.classList.contains('top')?'top':n.classList.contains('left')?'left':'right'));
+    states.forEach(s=>{ s.textContent='待機'; s.className='state'; });
+    reasonEls.forEach(r=> r.className='reason');
+    reasonJaEls.forEach(r=> r.textContent='―');
+    reasonZhEls.forEach(r=> r.textContent='');
+    $('core').style.borderColor='var(--amber)';
+    $('coreVerdict').textContent='―';
+    $('coreVerdict').style.color='var(--amber)';
+    $('status').textContent='STAND BY';
+    $('query').textContent='―';
+    const b=$('banner'); b.className='banner'; b.textContent='';
+    log('SYSTEM RESET');
+  }
+
+  function positionClass(n){
+    return n.classList.contains('top')?'top':n.classList.contains('left')?'left':'right';
+  }
+
+  function showVerdict(i, ok, reasonJa, reasonZh){
+    const n = nodes[i];
+    states[i].textContent = ok ? '可決' : '否決';
+    states[i].className = 'state ' + (ok?'approved':'denied');
+    n.className = 'node ' + positionClass(n) + ' ' + (ok?'approved':'denied');
+    reasonEls[i].className = 'reason ' + (ok?'approved':'denied');
+    reasonJaEls[i].textContent = reasonJa || (ok?'可決':'否決');
+    reasonZhEls[i].textContent = reasonZh || '';
+    ok ? S.process(i) : S.deny();
+    log(names[i] + (ok?' → 可決':' → 否決'));
+  }
+
+  async function deliberate(){
+    if (running) return;
+
+    const apiKey = (EMBEDDED_KEY && EMBEDDED_KEY.trim()) || $('apiKey').value.trim();
+    const query = $('queryInput').value.trim();
+    const model = $('model').value;
+
+    if(!query){ log('提訴が入力されていません'); $('queryInput').focus(); return; }
+    if(!apiKey){ log('ERROR: API Key 未設定'); $('status').textContent='NO API KEY'; $('apiKey').focus(); return; }
+
+    reset();
+    running = true;
+    ac(); // 解锁音频
+    if(!EMBEDDED_KEY) localStorage.setItem('gemini_api_key', apiKey);
+    localStorage.setItem('gemini_model', model);
+
+    $('query').textContent = query.length>18 ? query.slice(0,18)+'…' : query;
+    $('status').textContent = 'ANALYZING...';
+    $('coreVerdict').textContent = '審議中';
+    log('提訴受理: ' + query);
+    S.alarm();
+
+    // 三台机器进入"审议中"动画
+    nodes.forEach((n,i)=>{
+      T(()=>{
+        states[i].textContent='審議中';
+        states[i].className='state';
+        n.className='node ' + positionClass(n) + ' deliberating';
+        reasonJaEls[i].textContent='演算中…';
+        reasonZhEls[i].textContent='';
+        S.scan();
+        log(names[i] + ' 演算開始...');
+      }, 300 + i*300);
+    });
+
+    // 单次 API 调用：一次拿回三台的判断，避免并发 503
+    let results;
+    try {
+      results = await askAllMagi(query, apiKey, model);
+      results = results.map(r=> ({ ...r, error:false }));
+    } catch(err){
+      results = [0,1,2].map(()=> ({ ok:false, reasonJa:'通信/演算エラー: '+err.message, reasonZh:'通信/运算错误', error:true }));
+    }
+
+    if(!running) return; // 已被 reset 打断
+
+    // 随机揭晓顺序 + 随机间隔（不再固定按 M→B→C 顺序）
+    const order = [0,1,2];
+    for(let i=order.length-1;i>0;i--){ // Fisher–Yates 洗牌
+      const j = Math.floor(Math.random()*(i+1));
+      [order[i],order[j]] = [order[j],order[i]];
+    }
+    let acc = 400 + Math.random()*400;
+    const revealAt = {};
+    order.forEach((idx)=>{
+      const r = results[idx];
+      revealAt[idx] = acc;
+      T(()=> showVerdict(idx, r.ok, r.reasonJa, r.reasonZh), acc);
+      acc += 500 + Math.random()*900; // 每台间隔 0.5〜1.4s 随机
+    });
+    const lastReveal = acc;
+
+    // 汇总多数决（在最后一台揭晓之后）
+    T(()=>{
+      const anyError = results.some(r=>r.error);
+      const yes = results.filter(r=>r.ok).length;
+      const approved = yes >= 2;
+      const cv = $('coreVerdict'), b = $('banner');
+      cv.textContent = approved ? '可決' : '否決';
+      cv.style.color = approved ? 'var(--green)' : 'var(--red)';
+      $('status').textContent = (anyError?'[一部エラー] ':'') + (approved ? 'JUDGEMENT: APPROVED' : 'JUDGEMENT: DENIED');
+      b.textContent = approved ? '可 決' : '否 決';
+      b.className = 'banner show ' + (approved?'approved':'denied');
+      approved ? S.approve() : S.deny();
+      log(`決議完了 (${yes}/3) : ` + (approved?'APPROVED':'DENIED'));
+      running = false;
+      T(()=>{ b.className = 'banner ' + (approved?'approved':'denied'); }, 1800);
+    }, lastReveal + 300);
+  }
+
+  /* ============ 交互与环境动画 ============ */
+  // 内蔵キーがある場合：入力欄・取得リンクを隠して「キー内蔵済み」表示にする
+  if (EMBEDDED_KEY && EMBEDDED_KEY.trim()) {
+    $('apiKey').style.display = 'none';
+    $('getKeyLink').style.display = 'none';
+    $('keyLabel').innerHTML = '<span style="color:var(--green)">● APIキー内蔵済み</span>';
+  } else {
+    // 恢复本地保存的 Key
+    $('apiKey').value = localStorage.getItem('gemini_api_key') || '';
+    $('apiKey').addEventListener('change', ()=> localStorage.setItem('gemini_api_key', $('apiKey').value.trim()));
+  }
+  $('model').value = localStorage.getItem('gemini_model') || 'gemini-2.5-flash';
+  $('model').addEventListener('change', ()=> localStorage.setItem('gemini_model', $('model').value));
+
+  $('queryInput').addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); S.tick(); deliberate(); }
+  });
+
+  $('btnStart').addEventListener('click', ()=>{ S.tick(); deliberate(); });
+  $('btnReset').addEventListener('click', ()=>{ S.tick(); reset(); });
+  $('btnMute').addEventListener('click', (e)=>{
+    muted = !muted;
+    e.target.textContent = muted ? '音声 OFF' : '音声 ON';
+    if(!muted){ ac(); S.tick(); }
+  });
+
+  // 顶部 CODE 数字乱跳
+  setInterval(()=>{
+    if (Math.random()<0.3) $('code').textContent = Math.floor(Math.random()*900+100);
+  }, 1200);
+
+  // 时钟
+  function pad(n){ return String(n).padStart(2,'0'); }
+  setInterval(()=>{
+    const d = new Date();
+    $('clock').textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  }, 1000);
+
+  // 偶发画面闪烁（CRT 感）
+  setInterval(()=>{
+    if(Math.random()<0.15){
+      const f=$('flicker'); f.style.opacity='0.5';
+      setTimeout(()=> f.style.opacity='0', 60);
+    }
+  }, 2500);
+
+  log('MAGI SYSTEM ONLINE');
+  log('提訴を入力し 審議開始 を押下セヨ');
+})();
+</script>
+</body>
+</html>
